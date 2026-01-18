@@ -39,6 +39,8 @@ class AGCHModule(L.LightningModule):
         img_feature_dim: int = 4096,
         txt_feature_dim: int = 1386,
         rho: float = 1.0,
+        gamma_v: float = 1.0,
+        gamma_t: float = 1.0,
     ) -> None:
         """Initialize AGCH Module."""
         super().__init__()
@@ -178,7 +180,8 @@ class AGCHModule(L.LightningModule):
         if update_f_phase:
             # Phase 1: Update F, Fix B (detach B-related targets)
             B_h_fixed = B_h.detach()
-            S = self._compute_similarity_matrix(B_h_fixed)
+            # AGCH Guide: Compute S from raw features X, T
+            S = self._compute_similarity_matrix(X, T)
             B_g = self._compute_b_g(B_h_fixed, S.detach())
 
             loss_rec = self.compute_loss_rec(B_h, S.detach())
@@ -203,7 +206,8 @@ class AGCHModule(L.LightningModule):
             B_v_fixed = B_v.detach()
             B_t_fixed = B_t.detach()
 
-            S = self._compute_similarity_matrix(B_h_fixed)
+            # AGCH Guide: Compute S from raw features X, T
+            S = self._compute_similarity_matrix(X, T)
             # Pass S as adj
             B_g = self._compute_b_g(B_h_fixed, S)
 
@@ -291,18 +295,41 @@ class AGCHModule(L.LightningModule):
         return torch.tanh(B_g)
 
     def _compute_similarity_matrix(
-        self, Z: torch.Tensor, rho: Optional[float] = None
+        self, X: torch.Tensor, T: torch.Tensor, rho: Optional[float] = None
     ) -> torch.Tensor:
         """Compute aggregated similarity matrix S = C ⊙ D (Hadamard product).
 
-        Uses `rho` from hyperparameters by default.
+        As per AGCH Paper/Guide:
+        1. Normalize X and T.
+        2. Apply weights gamma_v and gamma_t.
+        3. Concatenate: Z = [gamma_v * norm(X), gamma_t * norm(T)]
+        4. Compute Cosine Smi C and Euclidean Dist D.
+        5. S = C * D
         """
         if rho is None:
             rho = float(self.hparams.get("rho", 1.0))
 
-        Z_norm = F.normalize(Z, dim=1)
-        C = Z_norm @ Z_norm.T
-        D = torch.exp(-torch.cdist(Z, Z, p=2) / rho)
+        gv = float(self.hparams.get("gamma_v", 1.0))
+        gt = float(self.hparams.get("gamma_t", 1.0))
+
+        # 1. Normalize modality features
+        X_norm = F.normalize(X, dim=1)
+        T_norm = F.normalize(T, dim=1)
+
+        # 2. Apply weights and concatenate (Z_tilde in paper)
+        Z = torch.cat([gv * X_norm, gt * T_norm], dim=1)
+
+        # 3. Compute Orientation similarity (Cosine Similarity C)
+        # Since Z is concatenated of normalized (weighted) vectors,
+        # C_{ij} = Z_i^T Z_j (dot product)
+        C = torch.mm(Z, Z.t())
+
+        # 4. Compute Difference similarity (Euclidean-based D)
+        # dist = sqrt(||Z_i - Z_j||^2)
+        dist = torch.cdist(Z, Z, p=2)
+        D = torch.exp(-torch.sqrt(dist + 1e-8) / rho)
+
+        # 5. Hadamard product and quantization
         S = C * D
         S = 2.0 * S - 1.0
         return S

@@ -4,9 +4,9 @@ _target_: src.models.agch_module.AGCHModule
 
 # AGCH Hyperparameters
 hash_code_len: 32
-alpha: 0.5
-beta: 0.5
-gamma: 0.5
+alpha: 1.0
+beta: 1.0
+gamma: 10.0
 
 # Optimizer
 learning_rate: 0.0001
@@ -15,5 +15,7 @@ learning_rate: 0.0001
 img_feature_dim: 4096
 txt_feature_dim: 1386
 
-# Similarity matrix temperature
-rho: 1.0
+# Similarity matrix (S) parameters
+rho: 4.0
+gamma_v: 2.0
+gamma_t: 0.3
