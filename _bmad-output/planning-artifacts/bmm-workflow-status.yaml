@@ -74,5 +74,8 @@ workflow_items:
     workflows:
       - id: "sprint-planning"
         name: "Sprint Planning"
-        status: "pending"
+      - id: "sprint-planning"
+        name: "Sprint Planning"
+        status: "complete"
+        completed_at: "2026-01-18T21:35:00+08:00"
         agent: "sm"

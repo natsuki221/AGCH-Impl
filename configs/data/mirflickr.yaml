@@ -1,0 +1,8 @@
+# MIRFlickr-25K Dataset configuration placeholder
+
+_target_: src.data.agch_datamodule.AGCHDataModule
+data_dir: ${paths.data_dir}
+batch_size: 128
+num_workers: 8
+pin_memory: true
+cache_in_memory: true

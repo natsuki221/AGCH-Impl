@@ -1,0 +1,11 @@
+# AGCH Model configuration placeholder
+
+# AGCH Hyperparameters
+hash_code_len: 32
+alpha: 0.5
+beta: 0.5
+gamma: 0.5
+
+# Learning rates
+lr_f: 0.001  # Feature network learning rate
+lr_b: 0.01   # Binary code learning rate

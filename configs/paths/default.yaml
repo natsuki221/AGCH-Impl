@@ -1,0 +1,4 @@
+# Dataset paths configuration
+
+data_dir: ${paths.root_dir}/data
+log_dir: ${paths.root_dir}/logs

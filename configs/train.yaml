@@ -1,0 +1,24 @@
+# @package _global_
+
+# Main training configuration entry point for AGCH-Impl
+# Hydra composes this file to build the full config
+
+defaults:
+  - _self_
+  - paths: default
+  - trainer: default
+  - model: agch
+  - data: mirflickr
+  - logger: tensorboard
+  - callbacks: default
+  - experiment: null
+  - debug: null
+  - optional local: default
+
+# General settings
+seed: 42
+task_name: "train"
+tags: ["agch", "cross-modal-retrieval"]
+
+# Set to true to log to wandb, false for tensorboard only
+use_wandb: false
