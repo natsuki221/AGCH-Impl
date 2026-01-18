@@ -6,7 +6,7 @@ _target_: src.models.agch_module.AGCHModule
 hash_code_len: 32
 alpha: 1.0
 beta: 1.0
-gamma: 10.0
+gamma: 1.0
 
 # Optimizer
 learning_rate: 0.0001

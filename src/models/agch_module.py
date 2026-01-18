@@ -245,6 +245,8 @@ class AGCHModule(L.LightningModule):
         with torch.no_grad():
             X, T, idx, L = batch
             B = self.forward(img_input=X, txt_input=T)
+            # CRITICAL: Binarize hash codes for proper Hamming distance calculation
+            B = torch.sign(B)
             self._val_codes.append(B.detach().cpu())
             self._val_labels.append(L.detach().cpu())
 
