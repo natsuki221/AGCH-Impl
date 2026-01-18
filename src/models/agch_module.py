@@ -34,13 +34,20 @@ class AGCHModule(L.LightningModule):
         hash_code_len: int = 32,
         alpha: float = 1.0,
         beta: float = 1.0,
-        gamma: float = 1.0,
+        gamma: float = 10.0,
+        delta: float = 0.01,  # δ: L2 GCN 結構損失權重
         learning_rate: float = 1e-4,
+        lr_img_encoder: float = 1e-4,  # Image Encoder 學習率
+        lr_txt_encoder: float = 1e-2,  # Text Encoder 學習率
+        lr_gcn: float = 1e-3,  # GCN 學習率
+        lr_fusion: float = 1e-2,  # Fusion Module 學習率
+        weight_decay: float = 5e-4,  # 權重衰減
+        momentum: float = 0.9,  # 動量
         img_feature_dim: int = 4096,
         txt_feature_dim: int = 1386,
-        rho: float = 1.0,
-        gamma_v: float = 1.0,
-        gamma_t: float = 1.0,
+        rho: float = 4.0,
+        gamma_v: float = 2.0,
+        gamma_t: float = 0.3,
         gcn_normalize: bool = True,
     ) -> None:
         """Initialize AGCH Module."""
@@ -110,25 +117,19 @@ class AGCHModule(L.LightningModule):
         return B
 
     def configure_optimizers(self) -> List[torch.optim.Optimizer]:
-        """Configure optimizers for alternating optimization."""
-        lr = self.hparams.learning_rate
+        """Configure optimizers - 暫時使用聯合優化策略進行測試。
 
-        # Optimizer for Feature Networks (Phase 1: Update F, Fix B)
-        # Components: ImgNet + TxtNet
-        opt_f = Adam(
-            list(self.img_enc.parameters()) + list(self.txt_enc.parameters()),
-            lr=lr,
+        測試簡化方案：使用單一 Adam 優化器聯合訓練所有參數。
+        """
+        # 聯合優化：所有參數使用單一 Adam
+        opt = torch.optim.Adam(
+            self.parameters(),
+            lr=1e-3,  # 使用較高的統一學習率
+            weight_decay=self.hparams.weight_decay,
         )
 
-        # Optimizer for Hash-related components (Phase 2: Update B, Fix F)
-        # Components: GCN (contains hash layers internally now)
-        # Note: self.hash_layer is effectively Identity/unused if BiGCN outputs final dim
-        opt_b = Adam(
-            list(self.gcn.parameters()),
-            lr=lr,
-        )
-
-        return [opt_f, opt_b]
+        # 返回兩個相同的優化器以兼容現有的 training_step
+        return [opt, opt]
 
     # ... training_step ... (reuse existing logic, logic is generic enough)
 
@@ -188,11 +189,20 @@ class AGCHModule(L.LightningModule):
             loss_str = self.compute_loss_str(B_g.detach(), B_h)
             # Cross-modal loss: pred = fused code B_h, targets = B_v, B_t
             loss_cm = self.compute_loss_cm(B_h, B_v, B_t)
+            
+            # 正則化損失 1：量化損失（強制 codes 接近 ±1）
+            loss_quant = torch.mean((B_h.abs() - 1.0) ** 2)
+            
+            # 正則化損失 2：平衡損失（防止所有 bits 趨向相同值）
+            loss_balance = torch.mean(B_h.mean(dim=0) ** 2)
 
+            # 調整權重：降低 L3 權重，增加 L1 權重
             loss = (
-                self.hparams.alpha * loss_rec
-                + self.hparams.beta * loss_str
-                + self.hparams.gamma * loss_cm
+                10.0 * loss_rec  # 增強 L1 以保留樣本間差異
+                + self.hparams.delta * loss_str
+                + 1.0 * loss_cm   # 降低 L3 權重防止模式崩塌
+                + 0.1 * loss_quant
+                + 1.0 * loss_balance
             )
 
             opt_f.zero_grad()
@@ -215,11 +225,18 @@ class AGCHModule(L.LightningModule):
             loss_str = self.compute_loss_str(B_g, B_h_fixed)
             # Cross-modal loss for Phase2: pred = B_g (depends on hash params), targets = B_v_fixed, B_t_fixed
             loss_cm = self.compute_loss_cm(B_g, B_v_fixed, B_t_fixed)
+            
+            # 正則化損失（與 Phase 1 相同）
+            loss_quant = torch.mean((B_g.abs() - 1.0) ** 2)
+            loss_balance = torch.mean(B_g.mean(dim=0) ** 2)
 
+            # 調整權重（與 Phase 1 相同）
             loss = (
-                self.hparams.alpha * loss_rec
-                + self.hparams.beta * loss_str
-                + self.hparams.gamma * loss_cm
+                10.0 * loss_rec
+                + self.hparams.delta * loss_str
+                + 1.0 * loss_cm
+                + 0.1 * loss_quant
+                + 1.0 * loss_balance
             )
 
             opt_b.zero_grad()
@@ -237,33 +254,61 @@ class AGCHModule(L.LightningModule):
         return {"loss": loss}
 
     def on_validation_epoch_start(self) -> None:
-        self._val_codes: List[torch.Tensor] = []
+        # 收集三種 hash codes：Image-only, Text-only, Fused
+        self._val_img_codes: List[torch.Tensor] = []
+        self._val_txt_codes: List[torch.Tensor] = []
+        self._val_fused_codes: List[torch.Tensor] = []
         self._val_labels: List[torch.Tensor] = []
 
     def validation_step(self, batch: Tuple[torch.Tensor, ...], batch_idx: int) -> None:
         """Collect validation codes and labels for retrieval evaluation."""
         with torch.no_grad():
             X, T, idx, L = batch
-            B = self.forward(img_input=X, txt_input=T)
-            # CRITICAL: Binarize hash codes for proper Hamming distance calculation
-            B = torch.sign(B)
-            self._val_codes.append(B.detach().cpu())
+
+            # 計算各模態的 hash codes
+            B_img = torch.sign(torch.tanh(self.img_enc(X)))  # Image-only
+            B_txt = torch.sign(torch.tanh(self.txt_enc(T)))  # Text-only
+            B_fused = self.forward(img_input=X, txt_input=T)
+            B_fused = torch.sign(B_fused)  # Fused (binarized)
+
+            self._val_img_codes.append(B_img.detach().cpu())
+            self._val_txt_codes.append(B_txt.detach().cpu())
+            self._val_fused_codes.append(B_fused.detach().cpu())
             self._val_labels.append(L.detach().cpu())
 
     def on_validation_epoch_end(self) -> None:
-        """Compute and log validation mAP using collected codes/labels."""
-        if not self._val_codes or not self._val_labels:
+        """Compute and log validation mAP for I→T, T→I, and Fused retrieval."""
+        if not self._val_labels:
             return
 
         with torch.no_grad():
-            codes = torch.cat(self._val_codes, dim=0)
+            img_codes = torch.cat(self._val_img_codes, dim=0)
+            txt_codes = torch.cat(self._val_txt_codes, dim=0)
+            fused_codes = torch.cat(self._val_fused_codes, dim=0)
             labels = torch.cat(self._val_labels, dim=0)
 
-            dist_matrix = calculate_hamming_dist_matrix(codes, codes)
-            dist_matrix.fill_diagonal_(float("inf"))
+            # I→T: Query=Image, Database=Text (論文主要指標)
+            dist_i2t = calculate_hamming_dist_matrix(img_codes, txt_codes)
+            dist_i2t.fill_diagonal_(float("inf"))
+            map_i2t = calculate_mAP(dist_i2t, labels, labels)
 
-            map_value = calculate_mAP(dist_matrix, labels, labels)
-            self.log("val/mAP", map_value, prog_bar=True)
+            # T→I: Query=Text, Database=Image
+            dist_t2i = calculate_hamming_dist_matrix(txt_codes, img_codes)
+            dist_t2i.fill_diagonal_(float("inf"))
+            map_t2i = calculate_mAP(dist_t2i, labels, labels)
+
+            # Fused (原有指標，用於監控收斂)
+            dist_fused = calculate_hamming_dist_matrix(fused_codes, fused_codes)
+            dist_fused.fill_diagonal_(float("inf"))
+            map_fused = calculate_mAP(dist_fused, labels, labels)
+
+            # 平均 mAP（論文常用報告方式）
+            map_avg = (map_i2t + map_t2i) / 2.0
+
+            self.log("val/mAP_I2T", map_i2t, prog_bar=True)
+            self.log("val/mAP_T2I", map_t2i, prog_bar=True)
+            self.log("val/mAP_Fused", map_fused)
+            self.log("val/mAP", map_avg, prog_bar=True)  # 主監控指標
 
     def _compute_hash_codes(
         self, X: torch.Tensor, T: torch.Tensor
@@ -299,46 +344,44 @@ class AGCHModule(L.LightningModule):
     def _compute_similarity_matrix(
         self, X: torch.Tensor, T: torch.Tensor, rho: Optional[float] = None
     ) -> torch.Tensor:
-        """Compute aggregated similarity matrix S = C * D.
+        """Compute aggregated similarity matrix S = C ⊙ D (Hadamard product).
 
-        Improved version per expert feedback:
-        1. Normalize X and T (L2).
-        2. Apply weights gamma_v and gamma_t.
-        3. Concatenate: Z = [gamma_v * norm(X), gamma_t * norm(T)]
-        4. Re-normalize Z (L2) to ensure Cosine C is in [-1, 1].
-        5. Compute Cosine Similarity C and Gaussian-kernel Euclidean D.
-        6. Fuse: S = alpha * C + beta * D (no 2*S-1 scaling).
+        論文公式 (AGCH-Guide.md)：
+        1. 特徵預處理：Z = [γ_v * norm(X), γ_t * norm(T)]
+        2. 方向相似度 C_ij = Z_i^T @ Z_j (Cosine Similarity)
+        3. 差異相似度 D_ij = exp(-√||Z_i - Z_j||₂ / ρ)
+        4. 聚合融合：S = C ⊙ D (Hadamard 乘積)
+        5. 量化調節：S = 2S - 1
         """
         if rho is None:
-            rho = float(self.hparams.get("rho", 1.0))
+            rho = float(self.hparams.get("rho", 4.0))
 
-        gv = float(self.hparams.get("gamma_v", 1.0))
-        gt = float(self.hparams.get("gamma_t", 1.0))
-        alpha = float(self.hparams.get("alpha", 1.0))
-        beta = float(self.hparams.get("beta", 1.0))
+        gv = float(self.hparams.get("gamma_v", 2.0))
+        gt = float(self.hparams.get("gamma_t", 0.3))
 
-        # 1. Normalize modality features (L2)
+        # 1. L2 正規化模態特徵
         X_norm = F.normalize(X, p=2, dim=1)
         T_norm = F.normalize(T, p=2, dim=1)
 
-        # 2. Apply weights and concatenate
+        # 2. 加權拼接
         Z = torch.cat([gv * X_norm, gt * T_norm], dim=1)
 
-        # 3. Re-normalize Z to ensure Cosine Similarity C is strictly in [-1, 1]
+        # 3. 再次正規化以確保 Cosine Similarity 在 [-1, 1]
         Z = F.normalize(Z, p=2, dim=1)
 
-        # 4. Compute Cosine Similarity (C)
-        # Since Z is now L2-normalized, mm(Z, Z^T) gives Cosine directly
+        # 4. 計算方向相似度 C（Cosine Similarity）
         C = torch.mm(Z, Z.t())
 
-        # 5. Compute Euclidean Distance based Similarity (D) using Gaussian Kernel
-        # D_ij = exp(-||Z_i - Z_j||^2 / (2 * rho^2))
-        dist_sq = torch.cdist(Z, Z, p=2).pow(2)
-        D = torch.exp(-dist_sq / (2.0 * rho * rho))
+        # 5. 計算差異相似度 D（論文公式：exp(-√dist / ρ)）
+        # 注意：論文使用歐式距離的平方根，非平方
+        dist = torch.cdist(Z, Z, p=2)  # 歐式距離
+        D = torch.exp(-dist / rho)  # 高斯核（使用距離，非距離平方）
 
-        # 6. Fuse (weighted sum instead of Hadamard to stabilize gradients)
-        # Removed: S = 2.0 * S - 1.0 (causes range issues)
-        S = alpha * C + beta * D
+        # 6. Hadamard 乘積融合（論文核心：元素級相乘）
+        S = C * D
+
+        # 7. 量化調節到 [-1, 1] 範圍（論文要求）
+        S = 2.0 * S - 1.0
 
         return S
 
@@ -354,13 +397,24 @@ class AGCHModule(L.LightningModule):
     def compute_loss_cm(
         self, B_pred: torch.Tensor, B_a: torch.Tensor, B_b: torch.Tensor
     ) -> torch.Tensor:
-        """L3: Cross-modal alignment loss (placeholder).
+        """L3: Cross-modal alignment loss.
+
+        強制跨模態對齊：
+        1. B_pred (fused/GCN) 與 B_a (image) 對齊
+        2. B_pred (fused/GCN) 與 B_b (text) 對齊
+        3. **關鍵**：B_a 與 B_b 直接對齊（同一樣本的 I 和 T 應相似）
 
         Args:
             B_pred: predicted hash codes (e.g., fused `B_h` or GCN-based `B_g`).
             B_a: target modality A (e.g., `B_v`).
             B_b: target modality B (e.g., `B_t`).
         """
+        # 原有：B_h 與 B_v、B_t 分別對齊
         loss_a = torch.mean((B_a - B_pred) ** 2)
         loss_b = torch.mean((B_b - B_pred) ** 2)
-        return 0.5 * (loss_a + loss_b)
+
+        # 關鍵添加：B_v 與 B_t 直接對齊（同一樣本的跨模態對齊）
+        loss_cross = torch.mean((B_a - B_b) ** 2)
+
+        # β=1.0 用於原有對齊，額外添加跨模態直接對齊
+        return 0.5 * (loss_a + loss_b) + loss_cross

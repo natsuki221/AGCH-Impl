@@ -36,24 +36,42 @@ class ImgNet(nn.Module):
 
 
 class TxtNet(nn.Module):
-    """Text Encoder Network (3-Layer MLP).
+    """Text Encoder Network (Enhanced for sparse BoW input).
 
-    Architecture: Input(K) -> FC(4096) -> ReLU -> FC(hash_code_len) -> Tanh
-    Used to project BoW/Tag features to hash code space.
+    Architecture: Input(K) -> BatchNorm -> FC(4096) -> BatchNorm -> LeakyReLU -> FC(hash_code_len)
+
+    針對稀疏 BoW 特徵的增強：
+    1. 輸入 BatchNorm 穩定稀疏輸入分佈
+    2. 使用 LeakyReLU 避免稀疏輸入導致的死神經元
+    3. 中間層 BatchNorm 改善梯度流
     """
 
     def __init__(self, input_dim: int, hash_code_len: int = 64):
         super().__init__()
         self.net = nn.Sequential(
+            # 輸入層 BatchNorm 處理稀疏輸入
+            nn.BatchNorm1d(input_dim),
             nn.Linear(input_dim, 4096),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(4096),
+            nn.LeakyReLU(0.2, inplace=True),  # LeakyReLU 處理稀疏激活
             nn.Linear(4096, hash_code_len),
         )
+
+        # 初始化：對第一個 Linear 層使用較大的初始值以對抗稀疏輸入
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                # 使用 Xavier 初始化並略微放大
+                nn.init.xavier_uniform_(m.weight, gain=2.0)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: Text features [Batch, Input_Dim]
+            x: Text features [Batch, Input_Dim] (sparse BoW/Tag)
         Returns:
             Projected features [Batch, hash_code_len]
         """
