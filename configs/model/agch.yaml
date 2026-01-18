@@ -19,3 +19,6 @@ txt_feature_dim: 1386
 rho: 4.0
 gamma_v: 2.0
 gamma_t: 0.3
+
+# GCN Normalization (Ablation: set to false for Baseline)
+gcn_normalize: true

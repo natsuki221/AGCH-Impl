@@ -63,14 +63,19 @@ class TxtNet(nn.Module):
 class SpectralGraphConv(nn.Module):
     """Spectral Graph Convolution Layer.
 
-    Formula: H(l) = sigma( D^(-1/2) * A * D^(-1/2) * H(l-1) * W(l) )
-    where A is the affinity matrix (Similarity Matrix S in AGCH).
+    Formula (when normalized=True):
+        H(l) = sigma( D^(-1/2) * A_hat * D^(-1/2) * H(l-1) * W(l) )
+    where A_hat = A + I (self-loop), and D is computed using |A_hat| to handle negative similarities.
+
+    Formula (when normalized=False):
+        H(l) = sigma( A * H(l-1) * W(l) )  [Simplified propagation]
     """
 
-    def __init__(self, in_features: int, out_features: int):
+    def __init__(self, in_features: int, out_features: int, normalize: bool = True):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
+        self.normalize = normalize
         self.weight = nn.Parameter(torch.Tensor(in_features, out_features))
         self.reset_parameters()
 
@@ -84,43 +89,32 @@ class SpectralGraphConv(nn.Module):
             input_feat: Node features [Batch, in_features]
             adj: Adjacency matrix (Affinity Matrix S) [Batch, Batch]
         """
-        # H * W
+        # 1. Linear Transformation: H * W
         support = torch.mm(input_feat, self.weight)
 
-        # AGCH Paper Logic for GCN propagation:
-        # The paper uses Spectral Graph Convolution notation.
-        # Ideally we need normalized laplacian or normalized adjacency.
-        # In AGCH, S is used as A. The normalization typically happens here.
+        if self.normalize:
+            # 2. Laplacian Normalization (Paper Eq. 8 & 15)
+            # Add self-loops for stability: A_hat = A + I
+            A_hat = adj + torch.eye(adj.size(0), device=adj.device, dtype=adj.dtype)
 
-        # Calculate Degree Matrix D_ii = sum_j(A_ij)
-        # Note: S can have negative values (range -1 to 1), so we should check paper details.
-        # Paper Eq (8): \tilde{A} is typically constructed from S.
-        # "We treat the similarity matrix S as the adjacency matrix of the affinity graph."
-        # Standard GCN normalization d_ii = sum(A_ij). If A has negatives, D might be problematic.
-        # However, many hashing papers use A as is or shift it.
-        # Given "Unsupervised", S is our best guess of graph structure.
+            # Compute Degree Matrix using absolute values to handle negative similarities
+            # D_ii = sum_j |A_ij|
+            D_hat = torch.sum(torch.abs(A_hat), dim=1)
 
-        # Let's perform standard symmetric normalization: D^(-1/2) A D^(-1/2)
-        # To avoid issues with negative S, usually S is shifted or abs is taken?
-        # AGCH paper Eq (15) for updating B_g uses simple GCN formulation.
-        # Let's assume standard GCN propagation.
-        # For batch-wise training, A is (Batch, Batch).
+            # Inverse Square Root: D^(-1/2)
+            D_inv_sqrt = torch.pow(D_hat, -0.5)
+            D_inv_sqrt[torch.isinf(D_inv_sqrt)] = 0.0
+            D_mat = torch.diag(D_inv_sqrt)
 
-        # Robust normalization handling:
-        # 1. Add self-loop: A_hat = A + I
-        # 2. Compute Degree D_hat
-        # 3. Norm = D_hat^(-0.5) * A_hat * D_hat^(-0.5)
+            # Symmetric Normalization: D^(-1/2) * A_hat * D^(-1/2)
+            norm_adj = torch.mm(torch.mm(D_mat, A_hat), D_mat)
 
-        # Since S is dense and values are in [-1, 1], adding I makes sense.
-        # But strictly speaking, S is already an affinity.
-        # We will implement the matrix multiplication chain: A * (H * W)
-        # For full spectral GCN, we construct laplacian.
-        # Here we implement the propagation term: output = A * support
-        # We'll omit complex D^-1/2 normalization here if unstable for signed graphs,
-        # or assume A is good enough.
-        # *Amendment*: Code review in community suggests simplified prop for hashing:
-        # output = A @ support
-        output = torch.mm(adj, support)
+            # 3. Propagate: norm_adj * support
+            output = torch.mm(norm_adj, support)
+        else:
+            # Simplified Propagation (Original implementation): A * H * W
+            output = torch.mm(adj, support)
+
         return output
 
     def __repr__(self):
@@ -130,31 +124,26 @@ class SpectralGraphConv(nn.Module):
             + str(self.in_features)
             + " -> "
             + str(self.out_features)
-            + ")"
+            + f", normalize={self.normalize})"
         )
 
 
 class BiGCN(nn.Module):
     """Bi-Layer GCN Network.
 
-    Architecture: Input(c) -> GCN(4096) -> ReLU -> GCN(c)
-    Note: Paper says "2 layers of GCN + 1 fully connected layer".
-    Let's check `AGCH-Guide.md` spec:
-    "GCN module: 2 layers GCN + 1 layer FC: 4096 -> 2048 -> c" (This seems wrong dimension-wise).
-    Input to GCN is `B_h` which is `c` dim (hash_code_len).
-    If we project c -> large -> c, it makes sense.
+    Architecture: Input(c) -> GCN(hidden_dim) -> ReLU -> GCN(c)
 
-    Let's follow a reasonable structure based on input `hash_code_len` (c):
-    Layer 1 (GCN): c -> 4096
-    Activation: ReLU
-    Layer 2 (GCN): 4096 -> c
+    Args:
+        hash_code_len: Dimension of input/output hash codes (c).
+        hidden_dim: Hidden layer dimension (default 4096).
+        normalize: Whether to use Laplacian normalization in GCN layers.
     """
 
-    def __init__(self, hash_code_len: int, hidden_dim: int = 4096):
+    def __init__(self, hash_code_len: int, hidden_dim: int = 4096, normalize: bool = True):
         super().__init__()
-        self.gc1 = SpectralGraphConv(hash_code_len, hidden_dim)
+        self.gc1 = SpectralGraphConv(hash_code_len, hidden_dim, normalize=normalize)
         self.relu = nn.ReLU(inplace=True)
-        self.gc2 = SpectralGraphConv(hidden_dim, hash_code_len)
+        self.gc2 = SpectralGraphConv(hidden_dim, hash_code_len, normalize=normalize)
 
     def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
         """

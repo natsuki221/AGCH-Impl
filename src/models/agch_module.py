@@ -41,6 +41,7 @@ class AGCHModule(L.LightningModule):
         rho: float = 1.0,
         gamma_v: float = 1.0,
         gamma_t: float = 1.0,
+        gcn_normalize: bool = True,
     ) -> None:
         """Initialize AGCH Module."""
         super().__init__()
@@ -59,9 +60,8 @@ class AGCHModule(L.LightningModule):
         # Text Encoder: 3-Layer MLP
         self.txt_enc = TxtNet(input_dim=txt_feature_dim, hash_code_len=hash_code_len)
 
-        # GCN Module: Bi-Layer GCN
-        # Note: GCN hidden dim usually 4096 or matched to feature dim
-        self.gcn = BiGCN(hash_code_len=hash_code_len, hidden_dim=4096)
+        # GCN Module: Bi-Layer GCN with configurable normalization
+        self.gcn = BiGCN(hash_code_len=hash_code_len, hidden_dim=4096, normalize=gcn_normalize)
 
         # Hashing layer is part of GCN in paper (last layer), or separate?
         # In components.py BiGCN outputs hash_Code_len directly.
@@ -297,41 +297,47 @@ class AGCHModule(L.LightningModule):
     def _compute_similarity_matrix(
         self, X: torch.Tensor, T: torch.Tensor, rho: Optional[float] = None
     ) -> torch.Tensor:
-        """Compute aggregated similarity matrix S = C ⊙ D (Hadamard product).
+        """Compute aggregated similarity matrix S = C * D.
 
-        As per AGCH Paper/Guide:
-        1. Normalize X and T.
+        Improved version per expert feedback:
+        1. Normalize X and T (L2).
         2. Apply weights gamma_v and gamma_t.
         3. Concatenate: Z = [gamma_v * norm(X), gamma_t * norm(T)]
-        4. Compute Cosine Smi C and Euclidean Dist D.
-        5. S = C * D
+        4. Re-normalize Z (L2) to ensure Cosine C is in [-1, 1].
+        5. Compute Cosine Similarity C and Gaussian-kernel Euclidean D.
+        6. Fuse: S = alpha * C + beta * D (no 2*S-1 scaling).
         """
         if rho is None:
             rho = float(self.hparams.get("rho", 1.0))
 
         gv = float(self.hparams.get("gamma_v", 1.0))
         gt = float(self.hparams.get("gamma_t", 1.0))
+        alpha = float(self.hparams.get("alpha", 1.0))
+        beta = float(self.hparams.get("beta", 1.0))
 
-        # 1. Normalize modality features
-        X_norm = F.normalize(X, dim=1)
-        T_norm = F.normalize(T, dim=1)
+        # 1. Normalize modality features (L2)
+        X_norm = F.normalize(X, p=2, dim=1)
+        T_norm = F.normalize(T, p=2, dim=1)
 
-        # 2. Apply weights and concatenate (Z_tilde in paper)
+        # 2. Apply weights and concatenate
         Z = torch.cat([gv * X_norm, gt * T_norm], dim=1)
 
-        # 3. Compute Orientation similarity (Cosine Similarity C)
-        # Since Z is concatenated of normalized (weighted) vectors,
-        # C_{ij} = Z_i^T Z_j (dot product)
+        # 3. Re-normalize Z to ensure Cosine Similarity C is strictly in [-1, 1]
+        Z = F.normalize(Z, p=2, dim=1)
+
+        # 4. Compute Cosine Similarity (C)
+        # Since Z is now L2-normalized, mm(Z, Z^T) gives Cosine directly
         C = torch.mm(Z, Z.t())
 
-        # 4. Compute Difference similarity (Euclidean-based D)
-        # dist = sqrt(||Z_i - Z_j||^2)
-        dist = torch.cdist(Z, Z, p=2)
-        D = torch.exp(-torch.sqrt(dist + 1e-8) / rho)
+        # 5. Compute Euclidean Distance based Similarity (D) using Gaussian Kernel
+        # D_ij = exp(-||Z_i - Z_j||^2 / (2 * rho^2))
+        dist_sq = torch.cdist(Z, Z, p=2).pow(2)
+        D = torch.exp(-dist_sq / (2.0 * rho * rho))
 
-        # 5. Hadamard product and quantization
-        S = C * D
-        S = 2.0 * S - 1.0
+        # 6. Fuse (weighted sum instead of Hadamard to stabilize gradients)
+        # Removed: S = 2.0 * S - 1.0 (causes range issues)
+        S = alpha * C + beta * D
+
         return S
 
     def compute_loss_rec(self, B: torch.Tensor, S: torch.Tensor) -> torch.Tensor:
