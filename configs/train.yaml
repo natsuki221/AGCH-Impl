@@ -11,6 +11,7 @@ defaults:
   - data: mirflickr
   - logger: tensorboard
   - callbacks: default
+  - hydra: default
   - experiment: null
   - debug: null
   - optional local: default
@@ -20,5 +21,10 @@ seed: 42
 task_name: "train"
 tags: ["agch", "cross-modal-retrieval"]
 
-# Set to true to log to wandb, false for tensorboard only
-use_wandb: false
+# Trainer control
+train: true
+test: false
+
+# Paths are configured in configs/paths/default.yaml
+# Logger is configured in configs/logger/tensorboard.yaml
+# Callbacks are configured in configs/callbacks/default.yaml

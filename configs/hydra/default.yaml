@@ -1,0 +1,19 @@
+# Hydra configuration
+# https://hydra.cc/docs/configure_hydra/intro/
+
+# Output directory pattern for experiments
+# Creates: logs/train/runs/2026-01-18_22-38-00/
+run:
+  dir: logs/train/runs/${now:%Y-%m-%d_%H-%M-%S}
+
+# Multirun (sweep) directory pattern
+sweep:
+  dir: logs/train/multiruns/${now:%Y-%m-%d_%H-%M-%S}
+  subdir: ${hydra.job.num}
+
+# Job configuration
+job:
+  chdir: false  # Don't change working directory
+
+# Verbose logging for debugging
+verbose: false

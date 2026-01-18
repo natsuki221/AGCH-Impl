@@ -1,4 +1,19 @@
-# Dataset paths configuration
+# @package paths
 
+# Path configuration for AGCH-Impl
+# All paths are relative to project root for portability
+
+# Project root - resolved via rootutils
+root_dir: ${oc.env:PROJECT_ROOT,${hydra:runtime.cwd}}
+
+# Data directory for datasets
 data_dir: ${paths.root_dir}/data
+
+# Log directory for all outputs
 log_dir: ${paths.root_dir}/logs
+
+# Output directory - set by Hydra at runtime
+output_dir: ${hydra:runtime.output_dir}
+
+# Working directory - original CWD before Hydra changes it
+work_dir: ${hydra:runtime.cwd}
