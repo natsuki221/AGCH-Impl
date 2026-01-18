@@ -189,10 +189,10 @@ class AGCHModule(L.LightningModule):
             loss_str = self.compute_loss_str(B_g.detach(), B_h)
             # Cross-modal loss: pred = fused code B_h, targets = B_v, B_t
             loss_cm = self.compute_loss_cm(B_h, B_v, B_t)
-            
+
             # 正則化損失 1：量化損失（強制 codes 接近 ±1）
             loss_quant = torch.mean((B_h.abs() - 1.0) ** 2)
-            
+
             # 正則化損失 2：平衡損失（防止所有 bits 趨向相同值）
             loss_balance = torch.mean(B_h.mean(dim=0) ** 2)
 
@@ -200,7 +200,7 @@ class AGCHModule(L.LightningModule):
             loss = (
                 10.0 * loss_rec  # 增強 L1 以保留樣本間差異
                 + self.hparams.delta * loss_str
-                + 1.0 * loss_cm   # 降低 L3 權重防止模式崩塌
+                + 1.0 * loss_cm  # 降低 L3 權重防止模式崩塌
                 + 0.1 * loss_quant
                 + 1.0 * loss_balance
             )
@@ -225,15 +225,15 @@ class AGCHModule(L.LightningModule):
             loss_str = self.compute_loss_str(B_g, B_h_fixed)
             # Cross-modal loss for Phase2: pred = B_g (depends on hash params), targets = B_v_fixed, B_t_fixed
             loss_cm = self.compute_loss_cm(B_g, B_v_fixed, B_t_fixed)
-            
+
             # 正則化損失（與 Phase 1 相同）
             loss_quant = torch.mean((B_g.abs() - 1.0) ** 2)
             loss_balance = torch.mean(B_g.mean(dim=0) ** 2)
 
-            # 調整權重（與 Phase 1 相同）
+            # 增強 GCN 訓練權重（δ: 0.01 → 1.0）
             loss = (
                 10.0 * loss_rec
-                + self.hparams.delta * loss_str
+                + 1.0 * loss_str  # 增強結構損失權重
                 + 1.0 * loss_cm
                 + 0.1 * loss_quant
                 + 1.0 * loss_balance
