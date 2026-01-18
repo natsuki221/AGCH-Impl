@@ -47,13 +47,13 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Data Pipeline & Feature Extraction
-  epic-2: backlog
-  2-1-hdf5-data-module-caching: backlog
+  epic-2: done
+  2-1-hdf5-data-module-caching: done
   epic-2-retrospective: optional
 
   # Epic 3: AGCH Core Algorithm & Training Loop
-  epic-3: backlog
-  3-1-agch-lightning-module-skeleton-manual-optimization-setup: backlog
+  epic-3: in-progress
+  3-1-agch-lightning-module-skeleton-manual-optimization-setup: done
   3-2-implement-alternating-optimization-logic: backlog
   epic-3-retrospective: optional
 
