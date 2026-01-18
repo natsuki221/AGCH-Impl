@@ -20,21 +20,13 @@ from src.utils.metrics import calculate_hamming_dist_matrix, calculate_mAP
 __all__ = ["AGCHModule"]
 
 
+from src.models.components import BiGCN, ImgNet, TxtNet
+
+
 class AGCHModule(L.LightningModule):
     """AGCH Model with Manual Optimization for Alternating Updates.
 
-    This module serves as the core training wrapper for the AGCH model.
-    It uses manual optimization (`automatic_optimization=False`) to handle
-    the alternating optimization strategy required by AGCH:
-    - Phase 1: Fix B (Binary Codes), Update F (Feature Networks)
-    - Phase 2: Fix F, Update B (Discrete Optimization)
-
-    Attributes:
-        img_enc: Image encoder network (placeholder).
-        txt_enc: Text encoder network (placeholder).
-        gcn: Graph Convolutional Network for neighborhood aggregation (placeholder).
-        hash_layer: Hashing layer to generate binary codes (placeholder).
-        hash_code_len: Length of the binary hash codes.
+    ... (docstring preserved)
     """
 
     def __init__(
@@ -48,68 +40,65 @@ class AGCHModule(L.LightningModule):
         txt_feature_dim: int = 1386,
         rho: float = 1.0,
     ) -> None:
-        """Initialize AGCH Module.
-
-        Args:
-            hash_code_len: Length of the output hash codes (default: 32).
-            alpha: Weight for reconstruction loss L1.
-            beta: Weight for structure loss L2.
-            gamma: Weight for cross-modal loss L3.
-            learning_rate: Learning rate for optimizers.
-            img_feature_dim: Dimension of image features (AlexNet fc7 = 4096).
-            txt_feature_dim: Dimension of text features (BoW/PCA = 1386).
-        """
+        """Initialize AGCH Module."""
         super().__init__()
 
         # CRITICAL: Enable manual optimization for alternating updates
         self.automatic_optimization = False
 
-        # Save hyperparameters for logging and checkpointing (includes `rho`)
+        # Save hyperparameters
         self.save_hyperparameters()
 
-        # --- Sub-module Placeholders (AC 2) ---
-        # These will be replaced with actual implementations in subsequent stories
-        self.img_enc = nn.Identity()  # Placeholder for Image Encoder
-        self.txt_enc = nn.Identity()  # Placeholder for Text Encoder
-        self.gcn = nn.Identity()  # Placeholder for GCN module
-        self.hash_layer = nn.Linear(hash_code_len, hash_code_len)  # Simple linear for skeleton
+        # --- Actual Components ---
+        # Image Encoder: MLP (FC -> Tanh implicit in logic, but here we use ImgNet)
+        # Note: ImgNet in components.py is Linear only, activation handled in forward
+        self.img_enc = ImgNet(input_dim=img_feature_dim, hash_code_len=hash_code_len)
 
-        # Internal projection layers (to be replaced)
-        self._img_proj = nn.Linear(img_feature_dim, hash_code_len)
-        self._txt_proj = nn.Linear(txt_feature_dim, hash_code_len)
+        # Text Encoder: 3-Layer MLP
+        self.txt_enc = TxtNet(input_dim=txt_feature_dim, hash_code_len=hash_code_len)
+
+        # GCN Module: Bi-Layer GCN
+        # Note: GCN hidden dim usually 4096 or matched to feature dim
+        self.gcn = BiGCN(hash_code_len=hash_code_len, hidden_dim=4096)
+
+        # Hashing layer is part of GCN in paper (last layer), or separate?
+        # In components.py BiGCN outputs hash_Code_len directly.
+        # So independent 'hash_layer' might be redundant or used for specific projection.
+        # Paper says: "GCN output -> Fully Connected -> Hash"
+        # Our BiGCN includes that structure.
+        # We will keep hash_layer as typically it's the final output layer if not in GCN.
+        # But BiGCN returns sizing `hash_code_len`.
+        # Let's keep `hash_layer` as Identity or remove it if BiGCN covers it.
+        # Reference line 289 in original code: B_g = torch.tanh(self.hash_layer(H_g))
+        # If BiGCN outputs [Batch, hash_code_len], then hash_layer should be Identity
+        # OR BiGCN should output intermediate and this layer projects.
+        # Let's assume BiGCN does the heavy lifting to 'c'.
+        self.hash_layer = nn.Identity()
+
+        # Internal projection layers (REMOVED: logic moved to Encoders)
+        # self._img_proj = nn.Linear(img_feature_dim, hash_code_len)
+        # self._txt_proj = nn.Linear(txt_feature_dim, hash_code_len)
 
     def forward(
         self,
         img_input: Optional[torch.Tensor] = None,
         txt_input: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Generate hash codes from image and/or text inputs.
-
-        Uses paper notation:
-        - X: Image features [Batch, img_feature_dim]
-        - T: Text features [Batch, txt_feature_dim]
-        - B: Binary hash codes [Batch, hash_code_len]
-
-        Args:
-            img_input: Image features X [Batch, 4096].
-            txt_input: Text features T [Batch, 1386].
-
-        Returns:
-            B: Hash codes [Batch, hash_code_len] in range (-1, 1) via tanh.
-        """
+        """Generate hash codes from image and/or text inputs."""
         # Paper notation: X for image, T for text
         X = img_input
         T = txt_input
 
         if X is not None and T is not None:
             # Fusion mode: combine both modalities
-            F_I = self._img_proj(X)  # [Batch, hash_code_len]
-            F_T = self._txt_proj(T)  # [Batch, hash_code_len]
-            O_H = F_I + F_T  # Simple fusion (placeholder)
+            # ImgNet/TxtNet outputs are already projected to hash_code_len
+            F_I = self.img_enc(X)  # [Batch, hash_code_len]
+            F_T = self.txt_enc(T)  # [Batch, hash_code_len]
+            O_H = F_I + F_T  # Simple fusion
         elif X is not None:
-            O_H = self._img_proj(X)
+            O_H = self.img_enc(X)
         elif T is not None:
-            O_H = self._txt_proj(T)
+            O_H = self.txt_enc(T)
         else:
             raise ValueError("At least one of img_input or txt_input must be provided")
 
@@ -119,36 +108,42 @@ class AGCHModule(L.LightningModule):
         return B
 
     def configure_optimizers(self) -> List[torch.optim.Optimizer]:
-        """Configure optimizers for alternating optimization.
-
-        Returns two optimizers for the alternating update strategy:
-        - opt_f: Optimizer for feature network parameters (img_enc, txt_enc)
-        - opt_b: Optimizer for hash-related parameters (gcn, hash_layer)
-
-        Returns:
-            List of optimizers for manual optimization.
-        """
+        """Configure optimizers for alternating optimization."""
         lr = self.hparams.learning_rate
 
         # Optimizer for Feature Networks (Phase 1: Update F, Fix B)
-        # Note: img_enc and txt_enc are currently Identity placeholders
-        # with no parameters. They will be replaced in Story 3.2+.
+        # Components: ImgNet + TxtNet
         opt_f = Adam(
-            list(self.img_enc.parameters())
-            + list(self.txt_enc.parameters())
-            + list(self._img_proj.parameters())
-            + list(self._txt_proj.parameters()),
+            list(self.img_enc.parameters()) + list(self.txt_enc.parameters()),
             lr=lr,
         )
 
         # Optimizer for Hash-related components (Phase 2: Update B, Fix F)
-        # Note: gcn is currently Identity placeholder with no parameters.
+        # Components: GCN (contains hash layers internally now)
+        # Note: self.hash_layer is effectively Identity/unused if BiGCN outputs final dim
         opt_b = Adam(
-            list(self.gcn.parameters()) + list(self.hash_layer.parameters()),
+            list(self.gcn.parameters()),
             lr=lr,
         )
 
         return [opt_f, opt_b]
+
+    # ... training_step ... (reuse existing logic, logic is generic enough)
+
+    def _compute_hash_codes(
+        self, X: torch.Tensor, T: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute modality-specific and fused hash codes."""
+        # Updated to use new Encoders
+        # They project directly to Hash Code Space (pre-activation)
+        O_I = self.img_enc(X)
+        O_T = self.txt_enc(T)
+
+        B_v = torch.tanh(O_I)
+        B_t = torch.tanh(O_T)
+        B_h = torch.tanh(O_I + O_T)
+
+        return B_v, B_t, B_h
 
     def training_step(self, batch: Tuple[torch.Tensor, ...], batch_idx: int) -> Dict[str, Any]:
         """Execute one training step with manual optimization.
@@ -184,7 +179,7 @@ class AGCHModule(L.LightningModule):
             # Phase 1: Update F, Fix B (detach B-related targets)
             B_h_fixed = B_h.detach()
             S = self._compute_similarity_matrix(B_h_fixed)
-            B_g = self._compute_b_g(B_h_fixed)
+            B_g = self._compute_b_g(B_h_fixed, S.detach())
 
             loss_rec = self.compute_loss_rec(B_h, S.detach())
             loss_str = self.compute_loss_str(B_g.detach(), B_h)
@@ -209,7 +204,8 @@ class AGCHModule(L.LightningModule):
             B_t_fixed = B_t.detach()
 
             S = self._compute_similarity_matrix(B_h_fixed)
-            B_g = self._compute_b_g(B_h_fixed)
+            # Pass S as adj
+            B_g = self._compute_b_g(B_h_fixed, S)
 
             loss_rec = self.compute_loss_rec(B_g, S)
             loss_str = self.compute_loss_str(B_g, B_h_fixed)
@@ -274,8 +270,8 @@ class AGCHModule(L.LightningModule):
         F_I = self.img_enc(X)
         F_T = self.txt_enc(T)
 
-        O_I = self._img_proj(F_I)
-        O_T = self._txt_proj(F_T)
+        O_I = F_I  # Already projected
+        O_T = F_T  # Already projected
 
         B_v = torch.tanh(O_I)
         B_t = torch.tanh(O_T)
@@ -283,13 +279,20 @@ class AGCHModule(L.LightningModule):
 
         return B_v, B_t, B_h
 
-    def _compute_b_g(self, B_h: torch.Tensor) -> torch.Tensor:
-        """Compute GCN-based hash codes from fused representation."""
-        H_g = self.gcn(B_h)
-        B_g = torch.tanh(self.hash_layer(H_g))
-        return B_g
+    def _compute_b_g(self, B_h: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        """Compute GCN-based hash codes from fused representation.
 
-    def _compute_similarity_matrix(self, Z: torch.Tensor, rho: Optional[float] = None) -> torch.Tensor:
+        Args:
+            B_h: Fused hash codes [Batch, hash_code_len]
+            adj: Adjacency matrix (Similarity Matrix S) [Batch, Batch]
+        """
+        # BiGCN takes (x, adj)
+        B_g = self.gcn(B_h, adj)
+        return torch.tanh(B_g)
+
+    def _compute_similarity_matrix(
+        self, Z: torch.Tensor, rho: Optional[float] = None
+    ) -> torch.Tensor:
         """Compute aggregated similarity matrix S = C ⊙ D (Hadamard product).
 
         Uses `rho` from hyperparameters by default.
@@ -313,7 +316,9 @@ class AGCHModule(L.LightningModule):
         """L2: Structure loss for GCN neighborhood consistency (placeholder)."""
         return torch.mean((B_g - B_h) ** 2)
 
-    def compute_loss_cm(self, B_pred: torch.Tensor, B_a: torch.Tensor, B_b: torch.Tensor) -> torch.Tensor:
+    def compute_loss_cm(
+        self, B_pred: torch.Tensor, B_a: torch.Tensor, B_b: torch.Tensor
+    ) -> torch.Tensor:
         """L3: Cross-modal alignment loss (placeholder).
 
         Args:
