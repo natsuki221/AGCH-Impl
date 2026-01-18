@@ -1,6 +1,6 @@
 # Story 3.2: Implement Alternating Optimization Logic
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -47,6 +47,10 @@ so that the model properly optimizes both the feature extraction network and the
 - [x] **Task 5: Precision & Logging (AC: 7)**
   - [x] Add `self.log` calls for all components.
   - [x] Add `bfloat16` / `autocast` compatibility note for RTX 5080.
+
+### Review Follow-ups (AI)
+- [ ] [AI-Review][Medium] Optimize Phase 2 `loss_cm` calculation (currently constant gradients) [src/models/agch_module.py:212]
+- [ ] [AI-Review][Low] Parameterize `rho` in `__init__` instead of hardcoding [src/models/agch_module.py:260]
 
 ## Dev Notes
 
