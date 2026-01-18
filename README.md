@@ -140,7 +140,7 @@ AGCH-Impl/
 
 ## 📜 許可證
 
-本專案採用 **MIT License**。詳見 [LICENSE](LICENSE) 文件。
+本專案採用 **Apache 2.0 LICENSE**。詳見 [LICENSE](LICENSE) 文件。
 
 ## 📧 聯繫與引用
 
