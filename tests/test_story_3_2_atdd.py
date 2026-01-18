@@ -94,12 +94,18 @@ class TestStory3_2ATDD:
         # OR executes logic to handle both.
         # Let's just verify that over a few steps, BOTH optimizers get stepped.
 
-        model.training_step(mock_batch, 0)  # Step 0
-        model.training_step(mock_batch, 1)  # Step 1
+        # Phase 1 (even step): Update F
+        model.trainer.global_step = 0
+        model.training_step(mock_batch, 0)
 
-        # Check if both optimizers were called at least once across steps
-        # This covers AC 3 & 4 broadly
-        assert opt_f.step.call_count >= 1 or opt_b.step.call_count >= 1
+        assert opt_f.step.call_count == 1
+        assert opt_b.step.call_count == 0
+
+        # Phase 2 (odd step): Update B
+        model.trainer.global_step = 1
+        model.training_step(mock_batch, 1)
+
+        assert opt_b.step.call_count == 1
 
     def test_loss_functions_existence_ac5(self, model):
         """AC 5: Verify loss calculation methods exist."""
@@ -118,7 +124,13 @@ class TestStory3_2ATDD:
         model.compute_loss_str = MagicMock(return_value=torch.tensor(0.5, requires_grad=True))
         model.compute_loss_cm = MagicMock(return_value=torch.tensor(0.5, requires_grad=True))
 
+        model.trainer.global_step = 0
+        model.gcn.mock_forward.reset_mock()
         model.training_step(mock_batch, 0)
+
+        # Ensure gcn input is detached to avoid gradient leakage
+        gcn_args, _ = model.gcn.mock_forward.call_args
+        assert gcn_args[0].requires_grad is False
 
         # Ensure manual_backward was called
         assert model.manual_backward.called, "manual_backward not called"

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytorch_lightning as L
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim import Adam
 
 __all__ = ["AGCHModule"]
@@ -149,8 +150,12 @@ class AGCHModule(L.LightningModule):
     def training_step(self, batch: Tuple[torch.Tensor, ...], batch_idx: int) -> Dict[str, Any]:
         """Execute one training step with manual optimization.
 
-        This is a placeholder implementation. The actual alternating
-        optimization logic will be implemented in Story 3.2.
+        Alternating optimization:
+        - Even step: Update F (feature networks), fix B
+        - Odd step: Update B (hash/GCN), fix F
+
+        Note: For RTX 5080, consider wrapping forward/loss in
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16) when enabled.
 
         Args:
             batch: Tuple of (image, text, index, label) tensors.
@@ -165,18 +170,115 @@ class AGCHModule(L.LightningModule):
         # Get optimizers
         opt_f, opt_b = self.optimizers()
 
-        # Placeholder: Simple forward pass and dummy loss
-        B = self.forward(img_input=X, txt_input=T)
+        # Compute hash codes for each modality and fused representation
+        B_v, B_t, B_h = self._compute_hash_codes(X, T)
 
-        # Dummy loss for skeleton (will be replaced with actual AGCH losses)
-        loss = B.mean()
+        # Determine phase (prefer global_step if available)
+        step_idx = getattr(self.trainer, "global_step", batch_idx)
+        update_f_phase = (step_idx % 2) == 0
 
-        # Manual backward (required for manual optimization)
-        opt_f.zero_grad()
-        self.manual_backward(loss)
-        opt_f.step()
+        if update_f_phase:
+            # Phase 1: Update F, Fix B (detach B-related targets)
+            B_h_fixed = B_h.detach()
+            S = self._compute_similarity_matrix(B_h_fixed)
+            B_g = self._compute_b_g(B_h_fixed)
 
-        # Log the loss
+            loss_rec = self.compute_loss_rec(B_h, S.detach())
+            loss_str = self.compute_loss_str(B_g.detach(), B_h)
+            loss_cm = self.compute_loss_cm(B_v, B_t, B_h)
+
+            loss = (
+                self.hparams.alpha * loss_rec
+                + self.hparams.beta * loss_str
+                + self.hparams.gamma * loss_cm
+            )
+
+            opt_f.zero_grad()
+            self.manual_backward(loss)
+            opt_f.step()
+
+            self.log("train/loss_f", loss, prog_bar=True)
+        else:
+            # Phase 2: Update B, Fix F (detach feature networks)
+            B_h_fixed = B_h.detach()
+            B_v_fixed = B_v.detach()
+            B_t_fixed = B_t.detach()
+
+            S = self._compute_similarity_matrix(B_h_fixed)
+            B_g = self._compute_b_g(B_h_fixed)
+
+            loss_rec = self.compute_loss_rec(B_g, S)
+            loss_str = self.compute_loss_str(B_g, B_h_fixed)
+            loss_cm = self.compute_loss_cm(B_v_fixed, B_t_fixed, B_h_fixed)
+
+            loss = (
+                self.hparams.alpha * loss_rec
+                + self.hparams.beta * loss_str
+                + self.hparams.gamma * loss_cm
+            )
+
+            opt_b.zero_grad()
+            self.manual_backward(loss)
+            opt_b.step()
+
+            self.log("train/loss_b", loss, prog_bar=True)
+
+        # Log shared metrics
         self.log("train/loss", loss, prog_bar=True)
+        self.log("train/loss_rec", loss_rec)
+        self.log("train/loss_str", loss_str)
+        self.log("train/loss_cm", loss_cm)
 
         return {"loss": loss}
+
+    def _compute_hash_codes(
+        self, X: torch.Tensor, T: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute modality-specific and fused hash codes.
+
+        Returns:
+            B_v, B_t, B_h: Hash codes for image, text, and fused representations.
+        """
+        F_I = self.img_enc(X)
+        F_T = self.txt_enc(T)
+
+        O_I = self._img_proj(F_I)
+        O_T = self._txt_proj(F_T)
+
+        B_v = torch.tanh(O_I)
+        B_t = torch.tanh(O_T)
+        B_h = torch.tanh(O_I + O_T)
+
+        return B_v, B_t, B_h
+
+    def _compute_b_g(self, B_h: torch.Tensor) -> torch.Tensor:
+        """Compute GCN-based hash codes from fused representation."""
+        H_g = self.gcn(B_h)
+        B_g = torch.tanh(self.hash_layer(H_g))
+        return B_g
+
+    def _compute_similarity_matrix(self, Z: torch.Tensor, rho: float = 1.0) -> torch.Tensor:
+        """Compute aggregated similarity matrix S = C ⊙ D (Hadamard product)."""
+        Z_norm = F.normalize(Z, dim=1)
+        C = Z_norm @ Z_norm.T
+        D = torch.exp(-torch.cdist(Z, Z, p=2) / rho)
+        S = C * D
+        S = 2.0 * S - 1.0
+        return S
+
+    def compute_loss_rec(self, B: torch.Tensor, S: torch.Tensor) -> torch.Tensor:
+        """L1: Reconstruction loss in Hamming space (placeholder)."""
+        B_sim = (B @ B.T) / B.shape[1]
+        return torch.mean((B_sim - S) ** 2)
+
+    def compute_loss_str(self, B_g: torch.Tensor, B_h: torch.Tensor) -> torch.Tensor:
+        """L2: Structure loss for GCN neighborhood consistency (placeholder)."""
+        return torch.mean((B_g - B_h) ** 2)
+
+    def compute_loss_cm(
+        self, B_v: torch.Tensor, B_t: torch.Tensor, B_h: torch.Tensor
+    ) -> torch.Tensor:
+        """L3: Cross-modal alignment loss (placeholder)."""
+        loss_v = torch.mean((B_v - B_h) ** 2)
+        loss_t = torch.mean((B_t - B_h) ** 2)
+        return 0.5 * (loss_v + loss_t)
