@@ -14,6 +14,8 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 
+__all__ = ["AGCHModule"]
+
 
 class AGCHModule(L.LightningModule):
     """AGCH Model with Manual Optimization for Alternating Updates.
@@ -125,6 +127,8 @@ class AGCHModule(L.LightningModule):
         lr = self.hparams.learning_rate
 
         # Optimizer for Feature Networks (Phase 1: Update F, Fix B)
+        # Note: img_enc and txt_enc are currently Identity placeholders
+        # with no parameters. They will be replaced in Story 3.2+.
         opt_f = Adam(
             list(self.img_enc.parameters())
             + list(self.txt_enc.parameters())
@@ -134,6 +138,7 @@ class AGCHModule(L.LightningModule):
         )
 
         # Optimizer for Hash-related components (Phase 2: Update B, Fix F)
+        # Note: gcn is currently Identity placeholder with no parameters.
         opt_b = Adam(
             list(self.gcn.parameters()) + list(self.hash_layer.parameters()),
             lr=lr,
