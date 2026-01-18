@@ -101,4 +101,5 @@ addopts = "-v"
 markers = [
     "p0: Priority 0 acceptance tests (Critical Path)",
     "integration: Integration tests",
+    "unit: Unit tests",
 ]
