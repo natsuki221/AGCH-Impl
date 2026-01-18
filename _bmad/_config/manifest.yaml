@@ -1,0 +1,11 @@
+installation:
+  version: 6.0.0-alpha.23
+  installDate: 2026-01-18T09:33:53.012Z
+  lastUpdated: 2026-01-18T09:33:53.012Z
+modules:
+  - core
+  - bmm
+ides:
+  - github-copilot
+  - antigravity
+  - gemini

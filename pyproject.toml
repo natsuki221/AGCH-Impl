@@ -1,0 +1,100 @@
+[project]
+name = "agch-impl"
+version = "0.1.0"
+description = "AGCH (Aggregation-based Graph Convolutional Hashing) implementation for unsupervised cross-modal retrieval"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Ncu-caic" }
+]
+keywords = ["cross-modal", "hashing", "GCN", "deep-learning", "retrieval"]
+
+dependencies = [
+    "numpy>=2.0.0",
+    "scipy>=1.12.0",
+    "scikit-learn>=1.4.0",
+    "pillow>=10.0.0",
+    "tqdm>=4.66.0",
+    "matplotlib>=3.8.0",
+    "pandas>=2.2.0",
+]
+
+[project.optional-dependencies]
+# CUDA 12.8 for RTX 5080 (Blackwell)
+cuda128 = [
+    "torch>=2.6.0",
+    "torchvision>=0.21.0",
+    "torchaudio>=2.6.0",
+    "torch-geometric>=2.5.0",
+]
+
+# CPU only (for testing without GPU)
+cpu = [
+    "torch>=2.6.0",
+    "torchvision>=0.21.0",
+    "torchaudio>=2.6.0",
+    "torch-geometric>=2.5.0",
+]
+
+# Development tools
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.0.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "ipykernel>=6.29.0",
+    "jupyter>=1.0.0",
+]
+
+# Experiment tracking
+experiment = [
+    "wandb>=0.16.0",
+    "tensorboard>=2.16.0",
+]
+
+# All dependencies
+all = [
+    "agch-impl[cuda128,dev,experiment]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+# PyTorch index for CUDA 12.8
+extra-index-url = [
+    "https://download.pytorch.org/whl/cu128"
+]
+
+[tool.uv.sources]
+# Use PyTorch's CUDA 12.8 wheels
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=src --cov-report=term-missing"

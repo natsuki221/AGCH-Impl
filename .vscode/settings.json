@@ -1,0 +1,18 @@
+{
+    "python.defaultInterpreterPath": "${env:HOME}/miniforge3/envs/agch/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.condaPath": "${env:HOME}/miniforge3/bin/conda",
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.env.linux": {
+        "CONDA_DEFAULT_ENV": "agch"
+    },
+    "terminal.integrated.profiles.linux": {
+        "bash (agch)": {
+            "path": "bash",
+            "args": [
+                "-c",
+                "source ~/.bashrc && conda activate agch && exec bash"
+            ]
+        }
+    }
+}
