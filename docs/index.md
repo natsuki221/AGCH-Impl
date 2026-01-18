@@ -9,7 +9,7 @@
 ## 專案概覽
 
 | 項目 | 說明 |
-|------|------|
+| :--- | :--- |
 | **專案名稱** | AGCH-Impl |
 | **當前版本** | v1.2.0 (基於全面掃描) |
 | **主要性能** | 16-bit mAP ≈ **0.696** (MIRFlickr-25K) |
@@ -20,14 +20,17 @@
 ## 核心文檔目錄
 
 ### 1. 系統架構與設計
+
 - [**架構分析文件 (Architecture Analysis)**](./architecture-analysis.md) - 詳細的模型組件、前向傳播與損失函數邏輯。
 - [**實作導論 (AGCH-Guide)**](./AGCH-Guide.md) - 繁體中文實作參考手冊。
 
 ### 2. 開發手冊
+
 - [**專案概覽 (Project Overview)**](./project-overview.md) - 快速了解專案背景與技術指標。
 - [**數據準備指南**](./project-overview.md#相關數據) - 關於 MIRFlickr 數據集處理的說明。
 
 ### 3. 開發記錄與驗收
+
 - [**實施演練日誌 (Walkthrough)**](../_bmad-output/implementation-artifacts/walkthrough.md) - 包含重大失誤修復與超參數優化記錄。
 - [**任務追踪清單 (Task List)**](../_bmad-output/implementation-artifacts/task.md) - 歷史任務完成狀態。
 
@@ -35,7 +38,7 @@
 
 ## 目錄結構分析
 
-```
+```text
 AGCH-Impl/
 ├── configs/             # Hydra 配置系統 (Model, Data, Trainer)
 ├── src/                 # 核心源代碼
@@ -57,5 +60,7 @@ AGCH-Impl/
 3. **推論優化**: 將模型導出為 TorchScript 或 ONNX。
 
 ---
+
+### 4. 生成方式
 
 *此文件由 Paige (Tech Writer) 通過 BMM 全面掃描流程自動生成*
