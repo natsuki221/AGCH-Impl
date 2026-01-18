@@ -1,0 +1,25 @@
+# Story 5.2: 終端實驗與超參數調優 (Terminal Experiments & Hyperparameter Tuning)
+
+- [x] **任務 1: 實施實驗腳本 (Implement Experiment Script)**
+  - [x] 創建 `scripts/run_experiments.sh`
+  - [x] 支持 16/32/64 bit 配置
+  - [x] 驗證腳本執行邏輯
+- [x] **任務 2: 數據準備流水線 (Data Preparation Pipeline)**
+  - [x] 創建 `scripts/prepare_data.py`
+  - [x] 實現自動下載、特徵提取 (VGG16) 與 HDF5 生成
+  - [x] 通過 50 張圖片的整合測試
+- [x] **任務 3: 變更提交與文檔 (Commit & Documentation)**
+  - [x] 提交代碼至 Git
+  - [x] 創建實施演練 (Walkthrough) 文檔
+  - [x] 更新 `.gitignore` 與 Story 文件狀態
+- [x] **任務 4: 全量實驗執行 (Full Experiment Execution)**
+  - [x] 更新 `.gitignore` 與 Story 文件狀態
+- [x] **任務 5: 架構修復與重訓 (Architecture Fix & Retraining) - *CRITICAL EXCEPTION***
+  - [!] **重大失誤記錄**: 發現 `AGCHModule` 中的核心組件 (MLP / GCN) 為 `Identity` 佔位符，導致模型無效。
+  - [x] 實作 `src/models/components.py` (ImgNet, TxtNet, BiGCN)
+  - [x] 更新 `src/models/agch_module.py` 集成組件
+  - [x] 重新執行全量實驗 (mAP 提升至 ~0.54)
+- [x] **任務 6: README.md 與項目文檔改進 (README.md & Project Documentation Improvement)**
+  - [x] 創建根目錄 `README.md`
+  - [x] 包含架構圖 (Mermaid) 與快速開始指南
+  - [x] 同步更新引用資訊與文檔內容

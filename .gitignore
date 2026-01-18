@@ -208,3 +208,6 @@ __marimo__/
 
 # MIRFLICKR
 data/*
+
+# Logs
+logs/*
