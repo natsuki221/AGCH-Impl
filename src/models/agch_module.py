@@ -44,6 +44,7 @@ class AGCHModule(L.LightningModule):
         learning_rate: float = 1e-4,
         img_feature_dim: int = 4096,
         txt_feature_dim: int = 1386,
+        rho: float = 1.0,
     ) -> None:
         """Initialize AGCH Module.
 
@@ -61,7 +62,7 @@ class AGCHModule(L.LightningModule):
         # CRITICAL: Enable manual optimization for alternating updates
         self.automatic_optimization = False
 
-        # Save hyperparameters for logging and checkpointing
+        # Save hyperparameters for logging and checkpointing (includes `rho`)
         self.save_hyperparameters()
 
         # --- Sub-module Placeholders (AC 2) ---
@@ -185,7 +186,8 @@ class AGCHModule(L.LightningModule):
 
             loss_rec = self.compute_loss_rec(B_h, S.detach())
             loss_str = self.compute_loss_str(B_g.detach(), B_h)
-            loss_cm = self.compute_loss_cm(B_v, B_t, B_h)
+            # Cross-modal loss: pred = fused code B_h, targets = B_v, B_t
+            loss_cm = self.compute_loss_cm(B_h, B_v, B_t)
 
             loss = (
                 self.hparams.alpha * loss_rec
@@ -209,7 +211,8 @@ class AGCHModule(L.LightningModule):
 
             loss_rec = self.compute_loss_rec(B_g, S)
             loss_str = self.compute_loss_str(B_g, B_h_fixed)
-            loss_cm = self.compute_loss_cm(B_v_fixed, B_t_fixed, B_h_fixed)
+            # Cross-modal loss for Phase2: pred = B_g (depends on hash params), targets = B_v_fixed, B_t_fixed
+            loss_cm = self.compute_loss_cm(B_g, B_v_fixed, B_t_fixed)
 
             loss = (
                 self.hparams.alpha * loss_rec
@@ -257,8 +260,14 @@ class AGCHModule(L.LightningModule):
         B_g = torch.tanh(self.hash_layer(H_g))
         return B_g
 
-    def _compute_similarity_matrix(self, Z: torch.Tensor, rho: float = 1.0) -> torch.Tensor:
-        """Compute aggregated similarity matrix S = C ⊙ D (Hadamard product)."""
+    def _compute_similarity_matrix(self, Z: torch.Tensor, rho: Optional[float] = None) -> torch.Tensor:
+        """Compute aggregated similarity matrix S = C ⊙ D (Hadamard product).
+
+        Uses `rho` from hyperparameters by default.
+        """
+        if rho is None:
+            rho = float(self.hparams.get("rho", 1.0))
+
         Z_norm = F.normalize(Z, dim=1)
         C = Z_norm @ Z_norm.T
         D = torch.exp(-torch.cdist(Z, Z, p=2) / rho)
@@ -275,10 +284,14 @@ class AGCHModule(L.LightningModule):
         """L2: Structure loss for GCN neighborhood consistency (placeholder)."""
         return torch.mean((B_g - B_h) ** 2)
 
-    def compute_loss_cm(
-        self, B_v: torch.Tensor, B_t: torch.Tensor, B_h: torch.Tensor
-    ) -> torch.Tensor:
-        """L3: Cross-modal alignment loss (placeholder)."""
-        loss_v = torch.mean((B_v - B_h) ** 2)
-        loss_t = torch.mean((B_t - B_h) ** 2)
-        return 0.5 * (loss_v + loss_t)
+    def compute_loss_cm(self, B_pred: torch.Tensor, B_a: torch.Tensor, B_b: torch.Tensor) -> torch.Tensor:
+        """L3: Cross-modal alignment loss (placeholder).
+
+        Args:
+            B_pred: predicted hash codes (e.g., fused `B_h` or GCN-based `B_g`).
+            B_a: target modality A (e.g., `B_v`).
+            B_b: target modality B (e.g., `B_t`).
+        """
+        loss_a = torch.mean((B_a - B_pred) ** 2)
+        loss_b = torch.mean((B_b - B_pred) ** 2)
+        return 0.5 * (loss_a + loss_b)
