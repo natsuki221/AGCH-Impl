@@ -72,7 +72,7 @@ class AGCHModule(L.LightningModule):
         self.img_enc = nn.Identity()  # Placeholder for Image Encoder
         self.txt_enc = nn.Identity()  # Placeholder for Text Encoder
         self.gcn = nn.Identity()  # Placeholder for GCN module
-        self.hash_layer = nn.Linear(img_feature_dim, hash_code_len)  # Simple linear for skeleton
+        self.hash_layer = nn.Linear(hash_code_len, hash_code_len)  # Simple linear for skeleton
 
         # Internal projection layers (to be replaced)
         self._img_proj = nn.Linear(img_feature_dim, hash_code_len)

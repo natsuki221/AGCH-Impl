@@ -178,5 +178,41 @@ So that I can results can be reliably reproduced as required by NFR-R1.
 **And** The resulting model weights (state_dict) should be bit-for-bit identical
 **And** The output mAP after the first evaluation should be exactly the same
 
+### Epic 5: Final Integration & Experiments
+Integrate all implemented components (Data, Model, Metrics) into the main training script, perform end-to-end training loops, and conduct hyperparameter tuning to achieve optimal retrieval performance.
+**FRs covered:** FR2, FR3, FR4 (Integrated)
+
+### Story 5.1: End-to-End System Integration
+
+As a Machine Learning Engineer,
+I want to implement the full training logic in `src/train.py` by instantiating the DataModule, Model, and Trainer with correct callbacks and loggers,
+So that I can execute the complete training pipeline from a single command.
+
+**Acceptance Criteria:**
+
+**Given** The configured `src/train.py`
+**When** I run `python src/train.py experiment=example`
+**Then** The system should successfully initialize `AGCHDataModule` and `AGCHModule`
+**And** It should execute `trainer.fit()` without errors
+**And** It should save checkpoints and log metrics (Loss, mAP) to TensorBoard/WandB
+**And** It should perform a final test evaluation
+**And** It must pass `tests/test_integration_train.py` (Smoke Test) using `fast_dev_run=True` to verify crash-free execution
+**And** Artifact Verification: The output directory must contain valid `.ckpt` and `config.yaml` files
+**And** Override Testing: CLI overrides (e.g., `model.alpha=0.5`) must be correctly propagated to the saved config
+
+### Story 5.2: Hyperparameter Tuning & Final Experiments
+
+As a Researcher,
+I want to run multiple experiments with varying hyperparameters (alpha, beta, gamma, hash code length),
+So that I can find the optimal configuration that maximizes mean Average Precision (mAP).
+
+**Acceptance Criteria:**
+
+**Given** The integrated training pipeline
+**When** I run a hyperparameter sweep (e.g., via Hydra multirun or manual scripts)
+**Then** I should be able to override `model.alpha`, `model.beta`, and `model.gamma` via CLI
+**And** I should obtain results for code lengths of 16, 32, and 64 bits
+**And** The best model should achieve comparable mAP to the paper's reported results
+
 
 

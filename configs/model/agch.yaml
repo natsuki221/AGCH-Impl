@@ -1,4 +1,6 @@
-# AGCH Model configuration placeholder
+# AGCH Model configuration
+
+_target_: src.models.agch_module.AGCHModule
 
 # AGCH Hyperparameters
 hash_code_len: 32
@@ -6,6 +8,12 @@ alpha: 0.5
 beta: 0.5
 gamma: 0.5
 
-# Learning rates
-lr_f: 0.001  # Feature network learning rate
-lr_b: 0.01   # Binary code learning rate
+# Optimizer
+learning_rate: 0.0001
+
+# Feature dimensions
+img_feature_dim: 4096
+txt_feature_dim: 1386
+
+# Similarity matrix temperature
+rho: 1.0

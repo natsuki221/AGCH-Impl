@@ -10,7 +10,7 @@ from typing import Optional, Tuple, Union
 import h5py
 import numpy as np
 import torch
-from lightning import LightningDataModule
+from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 
 

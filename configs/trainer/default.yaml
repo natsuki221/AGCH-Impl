@@ -1,6 +1,6 @@
 # Lightning Trainer configuration
 
-_target_: lightning.Trainer
+_target_: pytorch_lightning.Trainer
 default_root_dir: ${paths.log_dir}
 
 min_epochs: 1
@@ -8,6 +8,12 @@ max_epochs: 100
 
 accelerator: gpu
 devices: 1
+
+# Debug / fast dev run controls
+fast_dev_run: false
+limit_train_batches: 1.0
+limit_val_batches: 1.0
+limit_test_batches: 1.0
 
 precision: "16-mixed"
 deterministic: true

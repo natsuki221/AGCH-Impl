@@ -62,3 +62,9 @@ development_status:
   4-1-implementation-of-retrieval-metrics-map-pk: done
   4-2-reproducibility-determinism-verification: done
   epic-4-retrospective: optional
+
+  # Epic 5: Final Integration & Experiments
+  epic-5: in-progress
+  5-1-end-to-end-system-integration: done
+  5-2-hyperparameter-tuning-final-experiments: in-progress
+  epic-5-retrospective: optional

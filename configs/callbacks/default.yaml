@@ -2,27 +2,27 @@
 # https://lightning.ai/docs/pytorch/stable/extensions/callbacks.html
 
 model_checkpoint:
-  _target_: lightning.pytorch.callbacks.ModelCheckpoint
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
   dirpath: ${paths.output_dir}/checkpoints
   filename: "epoch_{epoch:03d}"
-  monitor: "val/loss"
-  mode: "min"
+  monitor: "val/mAP"
+  mode: "max"
   save_last: true
   save_top_k: 3
   auto_insert_metric_name: false
   verbose: false
 
 early_stopping:
-  _target_: lightning.pytorch.callbacks.EarlyStopping
-  monitor: "val/loss"
+  _target_: pytorch_lightning.callbacks.EarlyStopping
+  monitor: "val/mAP"
   patience: 10
-  mode: "min"
+  mode: "max"
   min_delta: 0.0
   verbose: false
 
 rich_progress_bar:
-  _target_: lightning.pytorch.callbacks.RichProgressBar
+  _target_: pytorch_lightning.callbacks.RichProgressBar
 
 learning_rate_monitor:
-  _target_: lightning.pytorch.callbacks.LearningRateMonitor
+  _target_: pytorch_lightning.callbacks.LearningRateMonitor
   logging_interval: "step"

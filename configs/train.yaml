@@ -11,6 +11,7 @@ defaults:
   - data: mirflickr
   - logger: tensorboard
   - callbacks: default
+  - extras: default
   - hydra: default
   - experiment: null
   - debug: null
