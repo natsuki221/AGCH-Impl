@@ -15,6 +15,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 
+from src.utils.metrics import calculate_hamming_dist_matrix, calculate_mAP
+
 __all__ = ["AGCHModule"]
 
 
@@ -233,6 +235,33 @@ class AGCHModule(L.LightningModule):
         self.log("train/loss_cm", loss_cm)
 
         return {"loss": loss}
+
+    def on_validation_epoch_start(self) -> None:
+        self._val_codes: List[torch.Tensor] = []
+        self._val_labels: List[torch.Tensor] = []
+
+    def validation_step(self, batch: Tuple[torch.Tensor, ...], batch_idx: int) -> None:
+        """Collect validation codes and labels for retrieval evaluation."""
+        with torch.no_grad():
+            X, T, idx, L = batch
+            B = self.forward(img_input=X, txt_input=T)
+            self._val_codes.append(B.detach().cpu())
+            self._val_labels.append(L.detach().cpu())
+
+    def on_validation_epoch_end(self) -> None:
+        """Compute and log validation mAP using collected codes/labels."""
+        if not self._val_codes or not self._val_labels:
+            return
+
+        with torch.no_grad():
+            codes = torch.cat(self._val_codes, dim=0)
+            labels = torch.cat(self._val_labels, dim=0)
+
+            dist_matrix = calculate_hamming_dist_matrix(codes, codes)
+            dist_matrix.fill_diagonal_(float("inf"))
+
+            map_value = calculate_mAP(dist_matrix, labels, labels)
+            self.log("val/mAP", map_value, prog_bar=True)
 
     def _compute_hash_codes(
         self, X: torch.Tensor, T: torch.Tensor

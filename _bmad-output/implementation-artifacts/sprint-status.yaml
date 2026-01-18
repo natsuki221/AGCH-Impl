@@ -58,7 +58,7 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: System Validation & Performance Evaluation
-  epic-4: backlog
-  4-1-implementation-of-retrieval-metrics-map-pk: backlog
+  epic-4: in-progress
+  4-1-implementation-of-retrieval-metrics-map-pk: done
   4-2-reproducibility-determinism-verification: backlog
   epic-4-retrospective: optional
