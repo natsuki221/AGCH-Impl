@@ -1,49 +1,53 @@
 {
   "workflow_version": "1.2.0",
   "timestamps": {
-    "started": "2026-01-18T18:02:10+08:00",
-    "last_updated": "2026-01-18T18:02:10+08:00"
+    "started": "2026-01-19T02:57:55+08:00",
+    "last_updated": "2026-01-19T03:00:00+08:00"
   },
-  "mode": "initial_scan",
-  "scan_level": "quick",
+  "mode": "full_rescan",
+  "scan_level": "exhaustive",
   "project_root": "/home/ncu-caic/Documents/Coding/github.com/natsuki221/AGCH-Impl",
   "output_folder": "/home/ncu-caic/Documents/Coding/github.com/natsuki221/AGCH-Impl/docs",
   "completed_steps": [
     {
-      "step": "step_0.5",
-      "status": "completed",
-      "timestamp": "2026-01-18T18:00:00+08:00",
-      "summary": "已載入文件需求資料"
-    },
-    {
-      "step": "step_0.6",
-      "status": "completed",
-      "timestamp": "2026-01-18T18:02:00+08:00",
-      "summary": "選擇快速掃描模式"
-    },
-    {
       "step": "step_1",
       "status": "completed",
-      "timestamp": "2026-01-18T18:02:10+08:00",
-      "summary": "分類為全新專案（無程式碼），類型為 library/data 研究專案"
+      "timestamp": "2026-01-19T02:58:30+08:00",
+      "summary": "分類為 Monolith 專案，類型為 Python/PyTorch 研究實作，具備完整的源代碼 (src/)"
+    },
+    {
+      "step": "step_3",
+      "status": "completed",
+      "timestamp": "2026-01-19T02:59:00+08:00",
+      "summary": "技術棧分析完成：PyTorch Lightning, Hydra, H5py, Rootutils, Hamming MAP 評估"
+    },
+    {
+      "step": "step_4",
+      "status": "completed",
+      "timestamp": "2026-01-19T03:00:00+08:00",
+      "summary": "全面代碼掃描完成。提取了 AGCHModule, BiGCN, ImgNet, TxtNet 的詳細實作邏輯與超參數配置"
     }
   ],
-  "current_step": "step_2",
   "project_classification": {
     "repository_type": "monolith",
-    "project_type_id": "library",
-    "display_name": "AGCH Implementation Library",
-    "status": "pre-implementation",
-    "has_source_code": false
+    "project_type_id": "data",
+    "display_name": "AGCH Implementation Project",
+    "status": "implementation-active"
   },
   "findings": {
-    "project_structure": "全新專案，僅有參考文件",
-    "existing_files": [
-      "AGENTS.md",
-      "docs/AGCH-Guide.md",
-      "docs/Aggregation-Based_Graph_Convolutional_Hashing_for_Unsupervised_Cross-Modal_Retrieval.pdf"
-    ]
+    "technology_stack": {
+      "framework": "PyTorch Lightning",
+      "config_management": "Hydra",
+      "data_format": "HDF5",
+      "eval_metrics": "mAP, Precision@k, Hamming Distance"
+    },
+    "model_architecture": {
+      "image_encoder": "ImgNet (MLP: 4096 -> Hash)",
+      "text_encoder": "TxtNet (3-Layer MLP)",
+      "gcn": "BiGCN (Spectral Graph Conv, 2 layers)",
+      "similarity_matrix": "Aggregated S using normalized raw features with weights (gamma_v, gamma_t)"
+    }
   },
-  "outputs_generated": ["project-scan-report.json"],
-  "resume_instructions": "從 step_2 繼續"
+  "outputs_generated": ["project-scan-report.json", "index.md"],
+  "current_step": "step_5"
 }
