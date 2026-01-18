@@ -26,16 +26,16 @@ if [[ -n "$GAMMA" ]]; then
 fi
 
 python src/train.py \
-  model.hash_code_length=16 \
+  model.hash_code_len=16 \
   hydra.run.dir="logs/agch_bits16" \
   $alpha_arg $beta_arg $gamma_arg
 
 python src/train.py \
-  model.hash_code_length=32 \
+  model.hash_code_len=32 \
   hydra.run.dir="logs/agch_bits32" \
   $alpha_arg $beta_arg $gamma_arg
 
 python src/train.py \
-  model.hash_code_length=64 \
+  model.hash_code_len=64 \
   hydra.run.dir="logs/agch_bits64" \
   $alpha_arg $beta_arg $gamma_arg

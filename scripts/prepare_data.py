@@ -132,13 +132,16 @@ def process_text_and_labels(image_paths, text_dir, annotation_dir, num_images):
     img_tags_map = {}  # path_basename -> [tags]
 
     for p in image_paths:
-        basename = Path(p).stem  # im1
-        # Tag file
-        tag_file = Path(p).parent / "meta" / "tags" / (basename + ".txt")
+        basename = Path(p).stem  # e.g., im1
+        # Tag file: In MIRFlickr-25K, tag files are 'tags1.txt' while images are 'im1.jpg'
+        tag_num = basename.replace("im", "")
+        tag_file = Path(p).parent / "meta" / "tags" / (f"tags{tag_num}.txt")
+
         if not tag_file.exists():
-            # Try alternate structure if extracted differently
-            # The zip usually contains "mirflickr" folder
-            # If we extracted to data/mirflickr, then path matches
+            # Fallback to basename.txt just in case
+            tag_file = Path(p).parent / "meta" / "tags" / (basename + ".txt")
+
+        if not tag_file.exists():
             continue
 
         with open(tag_file, "r", encoding="utf-8", errors="ignore") as f:
