@@ -5,33 +5,53 @@ This is the main entry point for training the AGCH model.
 It uses Hydra for configuration management and PyTorch Lightning for training.
 """
 
+import logging
+import sys
+from typing import Optional
+
 import rootutils
 
 # Setup root directory before importing project modules
 root = rootutils.setup_root(__file__, indicator=".git", pythonpath=True)
 
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+
+log = logging.getLogger(__name__)
 
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="train.yaml")
-def main(cfg: DictConfig) -> None:
+def main(cfg: DictConfig) -> Optional[float]:
     """Main training function.
 
     Args:
         cfg: Hydra configuration composed from configs/train.yaml
+
+    Returns:
+        Optional metric value for hyperparameter optimization
     """
-    # Import here to ensure rootutils has set up the path
-    from lightning import seed_everything
+    try:
+        # Import here to ensure rootutils has set up the path
+        from lightning import seed_everything
 
-    # Set seed for reproducibility (NFR-R1)
-    if cfg.get("seed"):
-        seed_everything(cfg.seed, workers=True)
+        # Log configuration
+        log.info(f"Config:\n{OmegaConf.to_yaml(cfg)}")
 
-    # TODO: Implement training logic in Story 3.1
-    print(f"AGCH Training initialized with seed: {cfg.get('seed', 'None')}")
-    print(f"Task: {cfg.get('task_name', 'train')}")
-    print("Training logic will be implemented in Epic 3.")
+        # Set seed for reproducibility (NFR-R1)
+        if cfg.get("seed"):
+            log.info(f"Setting seed: {cfg.seed}")
+            seed_everything(cfg.seed, workers=True)
+
+        # TODO: Implement training logic in Story 3.1
+        log.info(f"AGCH Training initialized with seed: {cfg.get('seed', 'None')}")
+        log.info(f"Task: {cfg.get('task_name', 'train')}")
+        log.info("Training logic will be implemented in Epic 3.")
+
+        return None
+
+    except Exception as e:
+        log.exception(f"Training failed with error: {e}")
+        raise
 
 
 if __name__ == "__main__":
