@@ -62,6 +62,12 @@ so that **I can identify the optimal configuration and report the final performa
 
 ### Completion Notes List
 
+- ✅ Processed `scripts/` folder logic (Task 1).
+- ✅ Created `scripts/prepare_data.py` for standard MIRFlickr download and feature extraction.
+- ⚠️ Data Preparation partially complete (Test mode: 50 images). User opted to commit code first. Full data prep required before experiments.
+- ✅ Created `scripts/run_experiments.sh` for multi-bit experiments.
+
+
 - ✅ Added `scripts/run_experiments.sh` with explicit 16/32/64-bit runs and unique `hydra.run.dir` per run; validated via existing tests.
 
 ### File List
