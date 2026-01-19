@@ -116,20 +116,52 @@ class AGCHModule(L.LightningModule):
 
         return B
 
-    def configure_optimizers(self) -> List[torch.optim.Optimizer]:
-        """Configure optimizers - 暫時使用聯合優化策略進行測試。
+    def configure_optimizers(self):
+        """Configure optimizers with differential learning rates AND Scheduler.
 
-        測試簡化方案：使用單一 Adam 優化器聯合訓練所有參數。
+        實作差異化學習率策略：
+        - ImgNet: 較低 LR (1e-4)，保護預訓練特徵
+        - TxtNet: 中等 LR (1e-3)，適應稀疏 BoW 輸入
+        - GCN: 單獨配置 (1e-3)，確保圖卷積權重更新
+
+        Scheduler: MultiStepLR 在 Epoch 30, 60, 90 衰減學習率至 0.1x
         """
-        # 聯合優化：所有參數使用單一 Adam
-        opt = torch.optim.Adam(
-            self.parameters(),
-            lr=1e-3,  # 使用較高的統一學習率
+        # 1. 定義參數群組
+        optimizer_grouped_parameters = [
+            {
+                "params": self.img_enc.parameters(),
+                "lr": self.hparams.lr_img_encoder,  # 通常 1e-4
+                "name": "img_enc",
+            },
+            {
+                "params": self.txt_enc.parameters(),
+                "lr": self.hparams.lr_txt_encoder,  # 調整為 1e-3
+                "name": "txt_enc",
+            },
+            {
+                "params": self.gcn.parameters(),
+                "lr": self.hparams.lr_gcn,  # 通常 1e-3
+                "name": "gcn",
+            },
+            # hash_layer 是 Identity，無參數
+        ]
+
+        # 2. 建立優化器
+        optimizer = torch.optim.Adam(
+            optimizer_grouped_parameters,
             weight_decay=self.hparams.weight_decay,
         )
 
-        # 返回兩個相同的優化器以兼容現有的 training_step
-        return [opt, opt]
+        # 3. [CRITICAL FIX] 建立 Scheduler
+        # 在 Epoch 30, 60, 90 將學習率衰減為原來的 0.1 倍
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            milestones=[30, 60, 90],
+            gamma=0.1,
+        )
+
+        # 注意回傳格式：必須是兩個列表 ([optimizers], [schedulers])
+        return [optimizer], [scheduler]
 
     # ... training_step ... (reuse existing logic, logic is generic enough)
 
@@ -168,8 +200,11 @@ class AGCHModule(L.LightningModule):
         # Unpack batch (expected from AGCHDataModule)
         X, T, idx, L = batch  # Paper notation: X=image, T=text, L=label
 
-        # Get optimizers
-        opt_f, opt_b = self.optimizers()
+        # Get optimizer (single optimizer with parameter groups)
+        # Note: Lightning always returns a list in manual optimization mode
+        opt = self.optimizers()
+        if isinstance(opt, list):
+            opt = opt[0]
 
         # Compute hash codes for each modality and fused representation
         B_v, B_t, B_h = self._compute_hash_codes(X, T)
@@ -205,9 +240,9 @@ class AGCHModule(L.LightningModule):
                 + 1.0 * loss_balance
             )
 
-            opt_f.zero_grad()
+            opt.zero_grad()
             self.manual_backward(loss)
-            opt_f.step()
+            opt.step()
 
             self.log("train/loss_f", loss, prog_bar=True)
         else:
@@ -239,9 +274,9 @@ class AGCHModule(L.LightningModule):
                 + 1.0 * loss_balance
             )
 
-            opt_b.zero_grad()
+            opt.zero_grad()
             self.manual_backward(loss)
-            opt_b.step()
+            opt.step()
 
             self.log("train/loss_b", loss, prog_bar=True)
 
@@ -378,11 +413,11 @@ class AGCHModule(L.LightningModule):
         D = torch.exp(-dist / rho)  # 高斯核（使用距離，非距離平方）
 
         # 6. Hadamard 乘積融合（論文核心：元素級相乘）
-        # S = C * D 範圍已經在 [-1, 1]：
-        #   - C (Cosine Similarity): [-1, 1]
-        #   - D (Distance Decay): (0, 1]
-        # 不需要額外的線性轉換
         S = C * D
+
+        # 7. 量化調節（論文公式）：將 S 映射到 [-1, 1]
+        # 恢復此步驟以符合 AGCH 原論文設計
+        S = 2.0 * S - 1.0
 
         return S
 

@@ -110,7 +110,8 @@ class SpectralGraphConv(nn.Module):
         self.weight = nn.Parameter(torch.Tensor(in_features, out_features))
         self.normalize = normalize
 
-        nn.init.xavier_uniform_(self.weight)
+        # 使用 Kaiming Normal 初始化，對 ReLU 網絡更有效，防止梯度消失
+        nn.init.kaiming_normal_(self.weight, mode="fan_in", nonlinearity="relu")
 
     def forward(self, input_feat, adj):
         support = torch.mm(input_feat, self.weight)

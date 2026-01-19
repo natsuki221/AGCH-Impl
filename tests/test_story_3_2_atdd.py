@@ -74,38 +74,30 @@ class TestStory3_2ATDD:
             mock_get_opts.assert_called()
 
     def test_alternating_logic_execution_ac2_ac3_ac4(self, model, mock_batch):
-        """AC 2, 3, 4: Verify alternating logic and optimizer steps."""
-        opt_f, opt_b = MagicMock(), MagicMock()
+        """AC 2, 3, 4: Verify alternating logic with single optimizer (parameter groups).
 
-        # We need to control the optimizers return
-        model.optimizers = MagicMock(return_value=[opt_f, opt_b])
+        New architecture uses a single optimizer with differential learning rates
+        for different parameter groups (img_enc, txt_enc, gcn). The alternating
+        logic controls which tensors are detached, not which optimizer is used.
+        """
+        opt = MagicMock()
 
-        # Execute step (Phase 1)
-        # Note: Depending on implementation, user might toggle phase by batch_idx or global_step.
-        # Here we check if AT LEAST ONE optimizer steps per call, or check specific logic if defined.
-        # For alternating, typically:
-        # Step N: Update F
-        # Step N+1: Update B
-        # Let's verify that logic toggles or runs both sequentially (paper says alternating).
+        # Return single optimizer wrapped in list (Lightning behavior)
+        model.optimizers = MagicMock(return_value=[opt])
 
-        # Assumption: Implementation will likely do both phases in one step OR toggle.
-        # The AC says "Implement a 'multi-phase' training step... or use toggle".
-        # Let's assume the implementation executes ONE phase per step for memory efficiency,
-        # OR executes logic to handle both.
-        # Let's just verify that over a few steps, BOTH optimizers get stepped.
-
-        # Phase 1 (even step): Update F
+        # Phase 1 (even step): Update F (feature networks focus)
         model.trainer.global_step = 0
         model.training_step(mock_batch, 0)
 
-        assert opt_f.step.call_count == 1
-        assert opt_b.step.call_count == 0
+        # Optimizer should be called once after Phase 1
+        assert opt.step.call_count == 1
 
-        # Phase 2 (odd step): Update B
+        # Phase 2 (odd step): Update B (GCN/hash focus)
         model.trainer.global_step = 1
         model.training_step(mock_batch, 1)
 
-        assert opt_b.step.call_count == 1
+        # Optimizer should be called again (total 2 times)
+        assert opt.step.call_count == 2
 
     def test_loss_functions_existence_ac5(self, model):
         """AC 5: Verify loss calculation methods exist."""

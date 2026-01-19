@@ -7,13 +7,13 @@ _target_: src.models.agch_module.AGCHModule
 hash_code_len: 32
 alpha: 1.0       # α: L1 重構損失權重
 beta: 1.0        # β: L3 跨模態一致性損失權重
-gamma: 10.0      # λ: L3 跨模態一致性損失權重 (又名 lambda)
+gamma: 10.0       # λ: L3 跨模態一致性損失權重 (從 10.0 降低，平衡重建與對齊)
 delta: 0.01      # δ: L2 GCN 結構損失權重 (1e-2)
 
 # Learning Rates (各模組學習率)
 learning_rate: 0.0001                 # Baseline / fallback
 lr_img_encoder: 0.0001    # Image Encoder 學習率
-lr_txt_encoder: 0.01      # Text Encoder 學習率
+lr_txt_encoder: 0.001     # Text Encoder 學習率 (從 0.01 降低，避免震盪)
 lr_gcn: 0.001             # GCN Modules 學習率
 lr_fusion: 0.01           # Fusion Module 學習率
 
@@ -26,9 +26,9 @@ img_feature_dim: 4096
 txt_feature_dim: 1386
 
 # Similarity matrix (S) parameters (相似度矩陣參數)
-rho: 4.0         # ρ: 歐式距離縮放參數
+rho: 6.0         # ρ: 歐式距離縮放參數 (從 4.0 增大，放寬高斯核)
 gamma_v: 2.0     # γ_v: 圖像模態權重
-gamma_t: 0.3     # γ_t: 文本模態權重
+gamma_t: 0.8     # γ_t: 文本模態權重
 
 # GCN Normalization (Ablation: set to false for Baseline)
 gcn_normalize: true
