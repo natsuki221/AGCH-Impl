@@ -378,10 +378,11 @@ class AGCHModule(L.LightningModule):
         D = torch.exp(-dist / rho)  # 高斯核（使用距離，非距離平方）
 
         # 6. Hadamard 乘積融合（論文核心：元素級相乘）
+        # S = C * D 範圍已經在 [-1, 1]：
+        #   - C (Cosine Similarity): [-1, 1]
+        #   - D (Distance Decay): (0, 1]
+        # 不需要額外的線性轉換
         S = C * D
-
-        # 7. 量化調節到 [-1, 1] 範圍（論文要求）
-        S = 2.0 * S - 1.0
 
         return S
 
